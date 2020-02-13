@@ -1,0 +1,19 @@
+{
+  "name": "ipark-server",
+  "version": "1.0.0",
+  "description": "Express basic auth",
+  "main": "server.js",
+  "scripts": {
+    "start": "nodemon server.js"
+  },
+  "author": "Sami Gabor",
+  "license": "ISC",
+  "dependencies": {
+    "cookie-parser": "^1.4.4",
+    "express": "^4.17.1",
+    "express-basic-auth": "^1.2.0"
+  },
+  "devDependencies": {
+    "cors": "^2.8.5"
+  }
+}
