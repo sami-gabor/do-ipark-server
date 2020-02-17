@@ -1,46 +1,90 @@
 const express = require('express');
 const cookieParser = require('cookie-parser');
-const bodyParser = require('body-parser');
-const path = require('path');
-const cors = require('cors');
+const session = require('express-session');
+// const cookie = require('cookie');
+const passport = require('passport');
+const LocalStrategy = require('passport-local').Strategy;
+const crypto = require('crypto');
 
+
+const db = require('./queries.js');
+
+const secret = 'Express is awesome!'; // used to sign cookies
 const app = express();
-const PORT = process.env.PORT || 5000;
 
-app.use(cors());
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(bodyParser.json());
-app.use(cookieParser());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-app.use(express.static(path.join(__dirname, '/client/build')));
-app.listen(PORT, () => console.log(`Listening on ${PORT}`));
+app.use(session({
+  secret,
+  resave: false,
+  saveUninitialized: true,
+}));
+
+app.use(passport.initialize());
+app.use(passport.session());
+app.use(express.static('public'));
+app.use(cookieParser(secret));
+
+// require('./routes.js')(app);
 
 
-app.get('/read-cookie', (req, res) => {
-  console.log(req.cookies.name);
+passport.use(new LocalStrategy((username, password, done) => {
+  console.log('strategy: ', 1);
   
-  if (req.cookies.name === 'admin') {
-    res.json({ screen: 'admin' });
-  } else {
-    res.json({ screen: 'authPage' });
-  }
+  db.getUserByEmail(username, (err, user) => {
+    console.log('strategy: ', 2, err, user);
+    if (err) return done(null, false);
+    if (!user) return done(null, false);
+
+    return crypto.pbkdf2(password, secret, 1000, 128, 'sha256', (error, derivedKey) => {
+      console.log('strategy: ', 3, derivedKey);
+      if (!error && derivedKey.toString('hex') === user[0].password_hash) {
+        console.log('strategy: ', 4, user[0], user[0].password_hash);
+        return done(null, user);
+      }
+      return done(null, false);
+    });
+  });
+}));
+
+passport.serializeUser((user, cb) => cb(null, user));
+passport.deserializeUser((user, cb) => cb(null, user));
+
+
+app.get('/', (req, res) => {
+  res.send('works!');
 });
 
-app.get('/clear-cookie', (req, res) => {
-  res.clearCookie('name').end();
-})
+app.post('/test', (req, res) => {
+  console.log(req.body);
+  res.json({message: 'post works!'});
+});
 
-app.post('/authenticate', (req, res) => {
-  const { email, password } = req.body;
+app.get('/failed', (req, res) => {
+  res.send('Failed...');
+});
+
+
+app.post('/login-local', passport.authenticate('local', { failureRedirect: '/failed' }), (req, res) => { // req.user --> array of RowDataPacket
+  console.log('/login-local', req.body);
   
-  if (email === 'admin' && password === '123') {
-    res.cookie('name', 'admin');
-    res.send({ screen: 'admin' });
-  } else {
-    res.send({ screen: 'authPage' });
-  }
-})
+  const token = crypto.randomBytes(128).toString('hex');
 
-app.get('/parking-spots', (req, res) => {
-  res.json({ list: [1, 3, 5] });
-})
+  db.storeToken(token, req.user[0].id);
+  res.cookie('token', token);
+  res.redirect('/');
+});
+
+
+app.post('/register-local', (req, res) => {
+  console.log('/register-local', req.body);
+  
+  const hash = crypto.pbkdf2Sync(req.body.password, secret, 1000, 128, 'sha256').toString('hex');
+  db.storeUserData(req.body.email, hash, req.body.password);
+  res.redirect('/');
+});
+
+
+app.listen(3000, console.log('Listening on port 3000.'));
+
