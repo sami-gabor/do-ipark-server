@@ -29,10 +29,10 @@ app.use(cookieParser(secret));
 // require('./routes.js')(app);
 
 
-passport.use(new LocalStrategy((username, password, done) => {
+passport.use(new LocalStrategy({ usernameField: 'email' }, (email, password, done) => {
   console.log('strategy: ', 1);
   
-  db.getUserByEmail(username, (err, user) => {
+  db.getUserByEmail(email, (err, user) => {
     console.log('strategy: ', 2, err, user);
     if (err) return done(null, false);
     if (!user) return done(null, false);
@@ -62,27 +62,27 @@ app.post('/test', (req, res) => {
 });
 
 app.get('/failed', (req, res) => {
-  res.send('Failed...');
+  res.send('Passport auth failed.');
 });
 
 
 app.post('/login-local', passport.authenticate('local', { failureRedirect: '/failed' }), (req, res) => { // req.user --> array of RowDataPacket
+  const { email, password } = req.body;
   console.log('/login-local', req.body);
   
-  const token = crypto.randomBytes(128).toString('hex');
-
-  db.storeToken(token, req.user[0].id);
-  res.cookie('token', token);
-  res.redirect('/');
+  db.getUserByEmail(email, (error, result) => {
+    if (error) throw error;
+    res.send(result);
+  })
+  // TODO: finish local auth
 });
 
 
 app.post('/register-local', (req, res) => {
-  console.log('/register-local', req.body);
-  
-  const hash = crypto.pbkdf2Sync(req.body.password, secret, 1000, 128, 'sha256').toString('hex');
-  db.storeUserData(req.body.email, hash, req.body.password);
-  res.redirect('/');
+  const { email, password } = req.body;
+  const passwordPash = crypto.pbkdf2Sync(password, secret, 1000, 128, 'sha256').toString('hex');
+  db.storeUserData(email, passwordPash);
+  res.json({ screen: 'pageAuth!' });
 });
 
 
